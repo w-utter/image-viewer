@@ -1,0 +1,37 @@
+[package]
+name = "avif-viewer"
+version = "0.1.0"
+edition = "2024"
+
+[features]
+debug-avif = []
+
+[dependencies]
+egui-wgpu = "0.33"
+egui = "0.33"
+egui-winit = "0.33"
+
+ctrlc = "3.2.0"
+
+tokio = {version = "1.48", features = ["rt", "rt-multi-thread", "fs", "sync", "macros", "time"]}
+
+rfd = "0.15"
+
+lockfree = "0.5"
+
+#zenavif-parse = {git = "https://github.com/imazen/zenavif-parse", features = ["eager"]}
+zenavif-parse = {path = "../zenavif-parse", features = ["eager"]}
+#rav1d-safe = {git = "https://github.com/imazen/rav1d-safe"}
+dav1d = "0.11"
+aom-decode = "0.2"
+
+
+num-traits = "0.2"
+
+image = {version = "0.25", features = ["avif-native"]}
+
+yuvutils-rs = "0.8"
+
+image-webp = "0.2"
+
+gif = "0.14"
