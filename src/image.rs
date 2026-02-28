@@ -1,8 +1,8 @@
 pub mod avif;
-pub mod webp;
 pub mod cleanup;
-pub mod metadata;
 pub mod gif;
+pub mod metadata;
+pub mod webp;
 
 use egui_wgpu::wgpu;
 
@@ -60,11 +60,21 @@ pub enum ImageView {
 }
 
 impl ImageView {
-    pub fn from_texture(texture: &ImageTexture, renderer: &mut egui_wgpu::Renderer, device: &wgpu::Device) -> Self {
+    pub fn from_texture(
+        texture: &ImageTexture,
+        renderer: &mut egui_wgpu::Renderer,
+        device: &wgpu::Device,
+    ) -> Self {
         match texture {
-            ImageTexture::Avif(a) => ImageView::Avif(avif::EguiAvifView::from_texture(a, renderer, device)),
-            ImageTexture::WebP(w) => ImageView::WebP(webp::EguiWebpView::from_texture(w, renderer, device)),
-            ImageTexture::Gif(g) => ImageView::Gif(gif::EguiGifView::from_texture(g, renderer, device)),
+            ImageTexture::Avif(a) => {
+                ImageView::Avif(avif::EguiAvifView::from_texture(a, renderer, device))
+            }
+            ImageTexture::WebP(w) => {
+                ImageView::WebP(webp::EguiWebpView::from_texture(w, renderer, device))
+            }
+            ImageTexture::Gif(g) => {
+                ImageView::Gif(gif::EguiGifView::from_texture(g, renderer, device))
+            }
         }
     }
 
@@ -73,6 +83,14 @@ impl ImageView {
             Self::Avif(a) => a.show(ui, size),
             Self::WebP(w) => w.show(ui, size),
             Self::Gif(g) => g.show(ui, size),
+        }
+    }
+
+    pub fn free_textures(&mut self, renderer: &mut egui_wgpu::Renderer) {
+        match self {
+            Self::Avif(a) => a.free_textures(renderer),
+            Self::WebP(w) => w.free_textures(renderer),
+            Self::Gif(g) => g.free_textures(renderer),
         }
     }
 }

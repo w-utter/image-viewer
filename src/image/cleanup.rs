@@ -16,12 +16,8 @@ impl Drop for Cleanup {
 
 pub fn channel() -> (Cleanup, ShutdownNotif) {
     let notify = Arc::new(tokio::sync::Notify::new());
-    let rx = ShutdownNotif {
-        rx: notify.clone(),
-    };
-    let tx = Cleanup {
-        tx: notify.clone(),
-    };
+    let rx = ShutdownNotif { rx: notify.clone() };
+    let tx = Cleanup { tx: notify.clone() };
 
     (tx, rx)
 }
@@ -41,4 +37,3 @@ impl ShutdownNotif {
         }
     }
 }
-

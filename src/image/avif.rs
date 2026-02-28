@@ -8,10 +8,10 @@ pub async fn load_avif(handle: rfd::FileHandle) -> AvifTextureData {
         let bytes = bytes;
         let parser = zenavif_parse::AvifParser::from_owned(bytes).unwrap();
 
-        AvifTextureData {
-            parser,
-        }
-    }).await.unwrap()
+        AvifTextureData { parser }
+    })
+    .await
+    .unwrap()
 }
 
 use super::cleanup::ShutdownNotif;
@@ -49,7 +49,13 @@ struct AvifDebug<'a> {
     _pd: core::marker::PhantomData<&'a ()>,
 }
 
-pub fn wgpu_write_avif_texture(queue: &wgpu::Queue, texture: &wgpu::Texture, width: u32, height: u32, data: &[u8]) {
+pub fn wgpu_write_avif_texture(
+    queue: &wgpu::Queue,
+    texture: &wgpu::Texture,
+    width: u32,
+    height: u32,
+    data: &[u8],
+) {
     let size = wgpu::Extent3d {
         width: width as _,
         height: height as _,
@@ -86,10 +92,24 @@ pub struct EguiAvifView {
 }
 
 impl EguiAvifView {
-    pub fn from_texture(texture: &AvifTexture, renderer: &mut egui_wgpu::Renderer, device: &wgpu::Device) -> Self {
+    pub fn from_texture(
+        texture: &AvifTexture,
+        renderer: &mut egui_wgpu::Renderer,
+        device: &wgpu::Device,
+    ) -> Self {
         let mut create_id = |texture: &wgpu::Texture| {
             let view = texture.create_view(&Default::default());
-            renderer.register_native_texture_with_sampler_options(device, &view, wgpu::SamplerDescriptor { lod_min_clamp: 0., lod_max_clamp: 0., min_filter: wgpu::FilterMode::Linear, mag_filter: wgpu::FilterMode::Linear, ..Default::default()})
+            renderer.register_native_texture_with_sampler_options(
+                device,
+                &view,
+                wgpu::SamplerDescriptor {
+                    lod_min_clamp: 0.,
+                    lod_max_clamp: 0.,
+                    min_filter: wgpu::FilterMode::Linear,
+                    mag_filter: wgpu::FilterMode::Linear,
+                    ..Default::default()
+                },
+            )
         };
 
         let combined = create_id(&texture.inner);
@@ -98,7 +118,7 @@ impl EguiAvifView {
         let alpha = create_id(&texture.alpha);
         #[cfg(all(debug_assertions, feature = "debug-avif"))]
         let color = create_id(&texture.color);
-        
+
         Self {
             inner: combined,
             #[cfg(all(debug_assertions, feature = "debug-avif"))]
@@ -126,13 +146,28 @@ impl EguiAvifView {
             }
         }
     }
+
+    pub fn free_textures(&mut self, renderer: &mut egui_wgpu::Renderer) {
+        renderer.free_texture(&self.inner);
+        #[cfg(all(debug_assertions, feature = "debug-avif"))]
+        {
+            renderer.free_texture(&self.alpha);
+            renderer.free_texture(&self.color);
+        }
+    }
 }
 
 impl AvifTextureData {
-    pub fn display(self, shutdown_tx: ShutdownNotif, device: &wgpu::Device, queue: std::sync::Arc<wgpu::Queue>, proxy: &egui_winit::winit::event_loop::EventLoopProxy<crate::app::UserEvent>) -> AvifTexture {
+    pub fn display(
+        self,
+        shutdown_tx: ShutdownNotif,
+        device: &wgpu::Device,
+        queue: std::sync::Arc<wgpu::Queue>,
+        proxy: &egui_winit::winit::event_loop::EventLoopProxy<crate::app::UserEvent>,
+    ) -> AvifTexture {
         let metadata = self.parser.primary_metadata().unwrap();
         if let Some(grid) = self.parser.grid_config() {
-            panic!("{grid:?}");
+            todo!("{grid:?}");
         }
 
         let width: u32 = metadata.max_frame_width.into();
@@ -140,11 +175,11 @@ impl AvifTextureData {
 
         use dav1d::{Decoder, Settings};
 
-        let mut main_decoder = Decoder::with_settings(&Settings::default())
-        .expect("decoder creation failed");
+        let mut main_decoder =
+            Decoder::with_settings(&Settings::default()).expect("decoder creation failed");
 
-        let mut alpha_decoder = Decoder::with_settings(&Settings::default())
-        .expect("decoder creation failed");
+        let mut alpha_decoder =
+            Decoder::with_settings(&Settings::default()).expect("decoder creation failed");
 
         let size = wgpu::Extent3d {
             width: width as _,
@@ -180,7 +215,7 @@ impl AvifTextureData {
         let color_texture2 = color_texture.clone();
 
         let loaded = std::sync::Arc::new(std::sync::atomic::AtomicBool::from(false));
-        
+
         let proxy = proxy.clone();
         let frame_loaded = loaded.clone();
         tokio::task::spawn(async move {
@@ -204,7 +239,16 @@ impl AvifTextureData {
                 _pd: core::marker::PhantomData,
             };
 
-            let data_bytes = Self::decode_obu(0, &*primary, alpha.as_deref(), &mut main_decoder, &mut alpha_decoder, color_info, width, height, debug);
+            let data_bytes = Self::decode_obu(
+                &*primary,
+                alpha.as_deref(),
+                &mut main_decoder,
+                &mut alpha_decoder,
+                color_info,
+                width,
+                height,
+                debug,
+            );
 
             wgpu_write_avif_texture(&queue, &texture, width, height, &data_bytes);
 
@@ -217,11 +261,14 @@ impl AvifTextureData {
 
             let _ = proxy.send_event(crate::app::UserEvent::RepaintRequest(repaint_info, None));
 
-            println!("animation: {:?}", self.parser.animation_info());
-            println!("light: {:?}", self.parser.content_light_level());
-            println!("premul: {:?}", self.parser.premultiplied_alpha());
-            println!("color: {:?}", self.parser.color_info());
-            println!("av1: {:?}", self.parser.av1_config());
+            #[cfg(all(debug_assertions, feature = "debug-avif"))]
+            {
+                println!("animation: {:?}", self.parser.animation_info());
+                println!("light: {:?}", self.parser.content_light_level());
+                println!("premul: {:?}", self.parser.premultiplied_alpha());
+                println!("color: {:?}", self.parser.color_info());
+                println!("av1: {:?}", self.parser.av1_config());
+            }
 
             if let Some(info) = self.parser.animation_info() {
                 let mut cached = vec![];
@@ -248,9 +295,13 @@ impl AvifTextureData {
                             current_cumulative_pass_nr: 0,
                         };
 
-                        let _ = proxy.send_event(crate::app::UserEvent::RepaintRequest(repaint_info, None));
+                        let _ = proxy
+                            .send_event(crate::app::UserEvent::RepaintRequest(repaint_info, None));
 
-                        if shutdown_tx.sleep(Duration::from_millis(*duration as u64)).await {
+                        if shutdown_tx
+                            .sleep(Duration::from_millis(*duration as u64))
+                            .await
+                        {
                             return;
                         }
                         idx = (idx + 1) % max_idx;
@@ -261,7 +312,7 @@ impl AvifTextureData {
 
                     let data = frame.data;
                     let alpha = frame.alpha_data.map(|alpha| alpha);
-                    
+
                     let debug = AvifDebug {
                         #[cfg(all(debug_assertions, feature = "debug-avif"))]
                         queue: &queue,
@@ -274,7 +325,16 @@ impl AvifTextureData {
 
                     let now = std::time::Instant::now();
 
-                    let data_bytes = Self::decode_obu(idx, &*data, alpha.as_deref(), &mut main_decoder, &mut alpha_decoder, color_info, width, height, debug);
+                    let data_bytes = Self::decode_obu(
+                        &*data,
+                        alpha.as_deref(),
+                        &mut main_decoder,
+                        &mut alpha_decoder,
+                        color_info,
+                        width,
+                        height,
+                        debug,
+                    );
 
                     wgpu_write_avif_texture(&queue, &texture, width, height, &data_bytes);
 
@@ -282,7 +342,9 @@ impl AvifTextureData {
 
                     // if time to process frame was non-negligable
                     let elapsed = std::time::Instant::now().duration_since(now);
-                    let wait_time = std::time::Duration::from_millis(dur as u64).checked_sub(elapsed).unwrap_or(std::time::Duration::ZERO);
+                    let wait_time = std::time::Duration::from_millis(dur as u64)
+                        .checked_sub(elapsed)
+                        .unwrap_or(std::time::Duration::ZERO);
 
                     let repaint_info = egui::RequestRepaintInfo {
                         viewport_id: egui::ViewportId::ROOT,
@@ -290,7 +352,8 @@ impl AvifTextureData {
                         current_cumulative_pass_nr: 0,
                     };
 
-                    let _ = proxy.send_event(crate::app::UserEvent::RepaintRequest(repaint_info, None));
+                    let _ =
+                        proxy.send_event(crate::app::UserEvent::RepaintRequest(repaint_info, None));
 
                     cached.push((dur, data_bytes));
 
@@ -304,10 +367,7 @@ impl AvifTextureData {
         });
 
         AvifTexture {
-            metadata: Metadata {
-                width,
-                height,
-            },
+            metadata: Metadata { width, height },
             inner: texture,
             #[cfg(all(debug_assertions, feature = "debug-avif"))]
             color: color_texture,
@@ -317,20 +377,33 @@ impl AvifTextureData {
         }
     }
 
-    fn decode_obu(frame_idx: usize, bytes: &[u8], alpha: Option<&[u8]>, main_decoder: &mut dav1d::Decoder, alpha_decoder: &mut dav1d::Decoder, color_info: Option<&zenavif_parse::ColorInformation>, width: u32, height: u32, debug: AvifDebug<'_>) -> Vec<u8> {
+    fn decode_obu(
+        bytes: &[u8],
+        alpha: Option<&[u8]>,
+        main_decoder: &mut dav1d::Decoder,
+        alpha_decoder: &mut dav1d::Decoder,
+        color_info: Option<&zenavif_parse::ColorInformation>,
+        width: u32,
+        height: u32,
+        debug: AvifDebug<'_>,
+    ) -> Vec<u8> {
         let primary = read_until_ready(main_decoder, bytes).unwrap();
         let alpha = alpha.map(|alpha| read_until_ready(alpha_decoder, alpha).unwrap());
 
         let depth = usize::from(primary.bit_depth() > 8) + 1;
         let mut buf = vec![0; usize::try_from(width * height * 4).unwrap() * depth];
 
-        yuv::process_avif_frame(primary, alpha, color_info, width, height, &mut buf, debug).unwrap();
+        yuv::process_avif_frame(primary, alpha, color_info, width, height, &mut buf, debug)
+            .unwrap();
 
         buf
     }
 }
 
-fn read_until_ready(decoder: &mut dav1d::Decoder, bytes: &[u8]) -> Result<dav1d::Picture, dav1d::Error> {
+fn read_until_ready(
+    decoder: &mut dav1d::Decoder,
+    bytes: &[u8],
+) -> Result<dav1d::Picture, dav1d::Error> {
     decoder.send_data(bytes.to_vec(), None, None, None).unwrap();
 
     loop {
@@ -338,7 +411,7 @@ fn read_until_ready(decoder: &mut dav1d::Decoder, bytes: &[u8]) -> Result<dav1d:
             Err(dav1d::Error::Again) => match decoder.send_pending_data() {
                 Ok(_) | Err(dav1d::Error::Again) => (),
                 Err(e) => return Err(e),
-            }
+            },
             res => return res,
         }
     }
@@ -401,7 +474,15 @@ mod yuv {
     }
 
     use dav1d::{PixelLayout, PlanarImageComponent};
-    pub(crate) fn process_avif_frame(primary: dav1d::Picture, alpha: Option<dav1d::Picture>, color_info: Option<&zenavif_parse::ColorInformation>, width: u32, height: u32, buf: &mut [u8], debug: super::AvifDebug<'_>) -> Result<(), ()> {
+    pub(crate) fn process_avif_frame(
+        primary: dav1d::Picture,
+        alpha: Option<dav1d::Picture>,
+        color_info: Option<&zenavif_parse::ColorInformation>,
+        width: u32,
+        height: u32,
+        buf: &mut [u8],
+        debug: super::AvifDebug<'_>,
+    ) -> Result<(), ()> {
         let bit_depth = primary.bit_depth();
 
         let yuv_range = match primary.color_range() {
@@ -411,15 +492,13 @@ mod yuv {
 
         let matrix_strategy = get_matrix(primary.matrix_coefficients()).unwrap();
 
-
         if matrix_strategy == YuvMatrixStrategy::Identity
             && primary.pixel_layout() != PixelLayout::I444
         {
             panic!()
         }
 
-        if matrix_strategy == YuvMatrixStrategy::CgCo
-            && primary.pixel_layout() == PixelLayout::I400
+        if matrix_strategy == YuvMatrixStrategy::CgCo && primary.pixel_layout() == PixelLayout::I400
         {
             panic!()
         }
@@ -494,7 +573,7 @@ mod yuv {
                         rgba[0] = ((rgba[0] as f32) * ((*a_src as f32) / 255.)) as u8;
                         rgba[1] = ((rgba[1] as f32) * ((*a_src as f32) / 255.)) as u8;
                         rgba[2] = ((rgba[2] as f32) * ((*a_src as f32) / 255.)) as u8;
-                        
+
                         rgba[3] = *a_src;
                     }
                 }
@@ -594,9 +673,7 @@ mod yuv {
     }
 
     /// Getting one of prebuilt matrix of fails
-    fn get_matrix(
-        david_matrix: dav1d::pixel::MatrixCoefficients,
-    ) -> Result<YuvMatrixStrategy, ()> {
+    fn get_matrix(david_matrix: dav1d::pixel::MatrixCoefficients) -> Result<YuvMatrixStrategy, ()> {
         match david_matrix {
             dav1d::pixel::MatrixCoefficients::Identity => Ok(YuvMatrixStrategy::Identity),
             dav1d::pixel::MatrixCoefficients::BT709 => {
@@ -640,7 +717,6 @@ mod yuv {
             dav1d::pixel::MatrixCoefficients::ICtCp => Err(()),
         }
     }
-
 
     #[inline]
     fn yuv400_to_rgbx_impl<
@@ -757,7 +833,7 @@ mod yuv {
 
     pub(crate) type HalvedRowHandler<V> =
         fn(YuvPlanarImage<V>, &mut [V], &CbCrInverseTransform<i32>, &YuvChromaRange);
-    
+
     pub(crate) fn yuv420_to_rgba8(
         image: YuvPlanarImage<u8>,
         rgb: &mut [u8],
@@ -941,7 +1017,8 @@ mod yuv {
         let bias_uv = range.bias_uv as i32;
         let y_iter = y_plane.chunks_exact(2);
         let rgb_chunks = rgba.chunks_exact_mut(CHANNELS * 2);
-        for (((y_src, &u_src), &v_src), rgb_dst) in y_iter.zip(u_plane).zip(v_plane).zip(rgb_chunks) {
+        for (((y_src, &u_src), &v_src), rgb_dst) in y_iter.zip(u_plane).zip(v_plane).zip(rgb_chunks)
+        {
             let y_value0: i32 = y_src[0].as_() - bias_y;
             let cb_value: i32 = u_src.as_() - bias_uv;
             let cr_value: i32 = v_src.as_() - bias_uv;
@@ -1238,7 +1315,8 @@ mod yuv {
         for (((y_src, u_src), v_src), rgb) in y_iter.zip(u_iter).zip(v_iter).zip(rgb_iter) {
             let rgb_chunks = rgb.chunks_exact_mut(CHANNELS);
 
-            for (((y_src, u_src), v_src), rgb_dst) in y_src.iter().zip(u_src).zip(v_src).zip(rgb_chunks)
+            for (((y_src, u_src), v_src), rgb_dst) in
+                y_src.iter().zip(u_src).zip(v_src).zip(rgb_chunks)
             {
                 let y_value = y_src.as_() - bias_y;
                 let cb_value = u_src.as_() - bias_uv;
@@ -1256,8 +1334,6 @@ mod yuv {
 
         Ok(())
     }
-
-
 
     #[inline(always)]
     /// Saturating rounding shift right against bit depth
@@ -1347,8 +1423,6 @@ mod yuv {
         Ok(())
     }
 
-
-
     #[derive(Copy, Clone, Debug)]
     pub(crate) enum PlaneDefinition {
         Y,
@@ -1358,9 +1432,9 @@ mod yuv {
 
     mod ycgcg {
         use super::{
-            check_rgb_preconditions, check_yuv_plane_preconditions, qrshr, yuv420_to_rgbx_invoker,
-            yuv422_to_rgbx_invoker, CbCrInverseTransform, HalvedRowHandler, PlaneDefinition,
-            YuvChromaRange, YuvIntensityRange, YuvPlanarImage, YuvStandardMatrix,
+            CbCrInverseTransform, HalvedRowHandler, PlaneDefinition, YuvChromaRange,
+            YuvIntensityRange, YuvPlanarImage, YuvStandardMatrix, check_rgb_preconditions,
+            check_yuv_plane_preconditions, qrshr, yuv420_to_rgbx_invoker, yuv422_to_rgbx_invoker,
         };
         use num_traits::AsPrimitive;
 
@@ -1480,9 +1554,12 @@ mod yuv {
             let y_iter = y_plane.chunks_exact(2);
             let rgb_chunks = rgba.chunks_exact_mut(CHANNELS * 2);
 
-            let scale_coef = ((max_value as f32 / range.range_y as f32) * (1 << PRECISION) as f32) as i32;
+            let scale_coef =
+                ((max_value as f32 / range.range_y as f32) * (1 << PRECISION) as f32) as i32;
 
-            for (((y_src, &u_src), &v_src), rgb_dst) in y_iter.zip(u_plane).zip(v_plane).zip(rgb_chunks) {
+            for (((y_src, &u_src), &v_src), rgb_dst) in
+                y_iter.zip(u_plane).zip(v_plane).zip(rgb_chunks)
+            {
                 let y_value0: i32 = y_src[0].as_() - bias_y;
                 let cg_value: i32 = u_src.as_() - bias_uv;
                 let co_value: i32 = v_src.as_() - bias_uv;
@@ -1610,8 +1687,8 @@ mod yuv {
                 let rgb_chunks = rgb.chunks_exact_mut(CHANNELS);
                 match yuv_range {
                     YuvIntensityRange::Tv => {
-                        let y_coef =
-                            ((max_value as f32 / range.range_y as f32) * (1 << PRECISION) as f32) as i32;
+                        let y_coef = ((max_value as f32 / range.range_y as f32)
+                            * (1 << PRECISION) as f32) as i32;
                         for (((y_src, u_src), v_src), rgb_dst) in
                             y_src.iter().zip(u_src).zip(v_src).zip(rgb_chunks)
                         {
@@ -1775,7 +1852,6 @@ mod yuv {
             12,
             "Converts YCgCo 444 planar format 12 bit-depth to Rgba 12 bit"
         );
-
     }
 
     pub(crate) fn gbr_to_rgba8(
@@ -1888,6 +1964,3 @@ mod yuv {
         Ok(())
     }
 }
-
-
-

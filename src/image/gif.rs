@@ -1,6 +1,6 @@
-use egui_wgpu::wgpu;
-use crate::image::metadata::Metadata;
 use crate::image::cleanup::ShutdownNotif;
+use crate::image::metadata::Metadata;
+use egui_wgpu::wgpu;
 
 pub struct GifTextureData {
     parser: gif::Decoder<std::io::Cursor<Vec<u8>>>,
@@ -14,14 +14,14 @@ pub async fn load_gif(handle: rfd::FileHandle) -> GifTextureData {
 
         let parser = options.read_info(std::io::Cursor::new(bytes)).unwrap();
 
-        GifTextureData {
-            parser,
-        }
-    }).await.unwrap()
+        GifTextureData { parser }
+    })
+    .await
+    .unwrap()
 }
 
 #[derive(Clone, Copy)]
-struct GifFrameInfo {
+pub(crate) struct GifFrameInfo {
     width: u32,
     height: u32,
     top: u32,
@@ -31,7 +31,13 @@ struct GifFrameInfo {
 }
 
 impl GifTextureData {
-    pub fn display(mut self, shutdown_tx: ShutdownNotif, device: &wgpu::Device, queue: std::sync::Arc<wgpu::Queue>, proxy: &egui_winit::winit::event_loop::EventLoopProxy<crate::app::UserEvent>) -> GifTexture {
+    pub fn display(
+        mut self,
+        shutdown_tx: ShutdownNotif,
+        device: &wgpu::Device,
+        queue: std::sync::Arc<wgpu::Queue>,
+        proxy: &egui_winit::winit::event_loop::EventLoopProxy<crate::app::UserEvent>,
+    ) -> GifTexture {
         let width = self.parser.width() as u32;
         let height = self.parser.height() as u32;
 
@@ -79,7 +85,14 @@ impl GifTextureData {
             premul_alpha(&mut buf);
 
             let dur = frame.delay * 10;
-            let frame_info = GifFrameInfo { width, height, top: frame.top as u32, left: frame.left as u32, duration: dur, disposal: frame.dispose};
+            let frame_info = GifFrameInfo {
+                width,
+                height,
+                top: frame.top as u32,
+                left: frame.left as u32,
+                duration: dur,
+                disposal: frame.dispose,
+            };
 
             wgpu_write_gif_texture(&queue, &texture, &frame_info, width, height, &buf);
 
@@ -111,7 +124,14 @@ impl GifTextureData {
 
                 let dur = frame.delay * 10;
 
-                let frame_info = GifFrameInfo { width: frame.width as u32, height: frame.height as u32, top: frame.top as u32, left: frame.left as u32, duration: dur, disposal: frame.dispose};
+                let frame_info = GifFrameInfo {
+                    width: frame.width as u32,
+                    height: frame.height as u32,
+                    top: frame.top as u32,
+                    left: frame.left as u32,
+                    duration: dur,
+                    disposal: frame.dispose,
+                };
                 let (prev_info, prev_buf) = cached.last().unwrap();
 
                 if matches!(prev_info.disposal, gif::DisposalMethod::Keep) {
@@ -121,7 +141,9 @@ impl GifTextureData {
                 wgpu_write_gif_texture(&queue, &texture, &frame_info, width, height, &buf);
 
                 let elapsed = std::time::Instant::now().duration_since(now);
-                let wait_time = std::time::Duration::from_millis(dur as u64).checked_sub(elapsed).unwrap_or(std::time::Duration::ZERO);
+                let wait_time = std::time::Duration::from_millis(dur as u64)
+                    .checked_sub(elapsed)
+                    .unwrap_or(std::time::Duration::ZERO);
 
                 let repaint_info = egui::RequestRepaintInfo {
                     viewport_id: egui::ViewportId::ROOT,
@@ -133,7 +155,6 @@ impl GifTextureData {
 
                 cached.push((frame_info, buf));
 
-                use std::time::Duration;
                 if shutdown_tx.sleep(wait_time).await {
                     return;
                 }
@@ -149,9 +170,13 @@ impl GifTextureData {
                         current_cumulative_pass_nr: 0,
                     };
 
-                    let _ = proxy.send_event(crate::app::UserEvent::RepaintRequest(repaint_info, None));
+                    let _ =
+                        proxy.send_event(crate::app::UserEvent::RepaintRequest(repaint_info, None));
 
-                    if shutdown_tx.sleep(Duration::from_millis(info.duration as u64)).await {
+                    if shutdown_tx
+                        .sleep(Duration::from_millis(info.duration as u64))
+                        .await
+                    {
                         return;
                     }
                 }
@@ -159,18 +184,24 @@ impl GifTextureData {
         });
 
         GifTexture {
-            metadata: Metadata {
-                width,
-                height,
-            },
+            metadata: Metadata { width, height },
             inner: texture,
             loaded,
         }
     }
 }
 
-fn blend_alpha(bytes: &mut [u8], byte_area: &GifFrameInfo, prev_bytes: &[u8], prev_byte_area: &GifFrameInfo) {
-    if byte_area.left + byte_area.width < prev_byte_area.left || prev_byte_area.left + prev_byte_area.width < byte_area.left || byte_area.top + byte_area.height < prev_byte_area.top || prev_byte_area.top + prev_byte_area.height < byte_area.top {
+fn blend_alpha(
+    bytes: &mut [u8],
+    byte_area: &GifFrameInfo,
+    prev_bytes: &[u8],
+    prev_byte_area: &GifFrameInfo,
+) {
+    if byte_area.left + byte_area.width < prev_byte_area.left
+        || prev_byte_area.left + prev_byte_area.width < byte_area.left
+        || byte_area.top + byte_area.height < prev_byte_area.top
+        || prev_byte_area.top + prev_byte_area.height < byte_area.top
+    {
         // no overlap, skip
         return;
     }
@@ -183,9 +214,9 @@ fn blend_alpha(bytes: &mut [u8], byte_area: &GifFrameInfo, prev_bytes: &[u8], pr
             let byte_offset = (v_offset + h_offset + y * byte_area.width + x) as usize * 4;
             let bytes = &mut bytes[byte_offset..byte_offset + 4];
 
-            let prev_byte_offset = (prev_v_offset + prev_h_offset + y * prev_byte_area.width + x) as usize * 4;
+            let prev_byte_offset =
+                (prev_v_offset + prev_h_offset + y * prev_byte_area.width + x) as usize * 4;
             let prev_bytes = &prev_bytes[prev_byte_offset..prev_byte_offset + 4];
-
 
             if bytes[3] == 0 {
                 bytes[0] = prev_bytes[0];
@@ -197,25 +228,64 @@ fn blend_alpha(bytes: &mut [u8], byte_area: &GifFrameInfo, prev_bytes: &[u8], pr
     }
 }
 
-fn get_horizontal_offset(byte_area: &GifFrameInfo, prev_byte_area: &GifFrameInfo) -> (u32, u32, u32) {
-    if byte_area.left ==  prev_byte_area.left {
+fn get_horizontal_offset(
+    byte_area: &GifFrameInfo,
+    prev_byte_area: &GifFrameInfo,
+) -> (u32, u32, u32) {
+    if byte_area.left == prev_byte_area.left {
         (0, 0, core::cmp::min(byte_area.width, prev_byte_area.width))
     } else if byte_area.left < prev_byte_area.left {
-        (prev_byte_area.left - byte_area.left, 0,  core::cmp::min(prev_byte_area.left + prev_byte_area.width, byte_area.left + byte_area.width) - prev_byte_area.left)
+        (
+            prev_byte_area.left - byte_area.left,
+            0,
+            core::cmp::min(
+                prev_byte_area.left + prev_byte_area.width,
+                byte_area.left + byte_area.width,
+            ) - prev_byte_area.left,
+        )
     } else {
-        (0, byte_area.left - prev_byte_area.left,  core::cmp::min(prev_byte_area.left + prev_byte_area.width, byte_area.left + byte_area.width) - byte_area.left)
+        (
+            0,
+            byte_area.left - prev_byte_area.left,
+            core::cmp::min(
+                prev_byte_area.left + prev_byte_area.width,
+                byte_area.left + byte_area.width,
+            ) - byte_area.left,
+        )
     }
 }
 
 fn get_vertical_offset(byte_area: &GifFrameInfo, prev_byte_area: &GifFrameInfo) -> (u32, u32, u32) {
-    let (offset_v, prev_offset_v, height) = if byte_area.top ==  prev_byte_area.top {
-        (0, 0, core::cmp::min(byte_area.height, prev_byte_area.height))
+    let (offset_v, prev_offset_v, height) = if byte_area.top == prev_byte_area.top {
+        (
+            0,
+            0,
+            core::cmp::min(byte_area.height, prev_byte_area.height),
+        )
     } else if byte_area.top < prev_byte_area.top {
-        (prev_byte_area.top - byte_area.top, 0,  core::cmp::min(prev_byte_area.top + prev_byte_area.height, byte_area.top + byte_area.height) - prev_byte_area.top)
+        (
+            prev_byte_area.top - byte_area.top,
+            0,
+            core::cmp::min(
+                prev_byte_area.top + prev_byte_area.height,
+                byte_area.top + byte_area.height,
+            ) - prev_byte_area.top,
+        )
     } else {
-        (0, byte_area.top - prev_byte_area.top,  core::cmp::min(prev_byte_area.top + prev_byte_area.height, byte_area.top + byte_area.height) - byte_area.top)
+        (
+            0,
+            byte_area.top - prev_byte_area.top,
+            core::cmp::min(
+                prev_byte_area.top + prev_byte_area.height,
+                byte_area.top + byte_area.height,
+            ) - byte_area.top,
+        )
     };
-    (offset_v * byte_area.width, prev_offset_v * prev_byte_area.width, height)
+    (
+        offset_v * byte_area.width,
+        prev_offset_v * prev_byte_area.width,
+        height,
+    )
 }
 
 #[test]
@@ -237,7 +307,10 @@ fn gif_offsets() {
     let f2 = test_frame(0, 0, 50, 50);
     let hoffset = get_horizontal_offset(&f1, &f2);
     let voffset = get_vertical_offset(&f1, &f2);
-    assert_eq!(get_horizontal_offset(&f1, &f2), get_horizontal_offset(&f2, &f1));
+    assert_eq!(
+        get_horizontal_offset(&f1, &f2),
+        get_horizontal_offset(&f2, &f1)
+    );
     assert_eq!(get_vertical_offset(&f1, &f2), get_vertical_offset(&f2, &f1));
     assert_eq!(hoffset, (0, 0, 50));
     assert_eq!(voffset, (0, 0, 50));
@@ -285,7 +358,21 @@ fn gif_offsets() {
     assert_eq!(voffset, (25 * f6.width, 0, 75));
 }
 
-pub fn wgpu_write_gif_texture(queue: &wgpu::Queue, texture: &wgpu::Texture, GifFrameInfo { top, left, width, height, disposal, .. }: &GifFrameInfo, max_width: u32, max_height: u32, data: &[u8]) {
+pub fn wgpu_write_gif_texture(
+    queue: &wgpu::Queue,
+    texture: &wgpu::Texture,
+    GifFrameInfo {
+        top,
+        left,
+        width,
+        height,
+        disposal,
+        ..
+    }: &GifFrameInfo,
+    max_width: u32,
+    max_height: u32,
+    data: &[u8],
+) {
     let size = wgpu::Extent3d {
         width: *width as _,
         height: *height as _,
@@ -298,7 +385,9 @@ pub fn wgpu_write_gif_texture(queue: &wgpu::Queue, texture: &wgpu::Texture, GifF
         z: 0,
     };
 
-    if !matches!(disposal, gif::DisposalMethod::Keep) && (*width < max_width || *height < max_height) {
+    if !matches!(disposal, gif::DisposalMethod::Keep)
+        && (*width < max_width || *height < max_height)
+    {
         let clear = vec![0; (max_width * max_height * 4) as usize];
 
         let clear_size = wgpu::Extent3d {
@@ -364,17 +453,33 @@ pub struct EguiGifView {
 }
 
 impl EguiGifView {
-    pub fn from_texture(texture: &GifTexture, renderer: &mut egui_wgpu::Renderer, device: &wgpu::Device) -> Self {
+    pub fn from_texture(
+        texture: &GifTexture,
+        renderer: &mut egui_wgpu::Renderer,
+        device: &wgpu::Device,
+    ) -> Self {
         let view = texture.inner.create_view(&Default::default());
-        let inner = renderer.register_native_texture_with_sampler_options(device, &view, wgpu::SamplerDescriptor { lod_min_clamp: 0., lod_max_clamp: 0., min_filter: wgpu::FilterMode::Linear, mag_filter: wgpu::FilterMode::Linear, ..Default::default()});
+        let inner = renderer.register_native_texture_with_sampler_options(
+            device,
+            &view,
+            wgpu::SamplerDescriptor {
+                lod_min_clamp: 0.,
+                lod_max_clamp: 0.,
+                min_filter: wgpu::FilterMode::Linear,
+                mag_filter: wgpu::FilterMode::Linear,
+                ..Default::default()
+            },
+        );
 
-        Self {
-            inner
-        }
+        Self { inner }
     }
 
     pub fn show(&mut self, ui: &mut egui::Ui, size: egui::Vec2) {
         let img = egui::Image::new((self.inner, size));
         ui.add(img);
+    }
+
+    pub fn free_textures(&mut self, renderer: &mut egui_wgpu::Renderer) {
+        renderer.free_texture(&self.inner)
     }
 }

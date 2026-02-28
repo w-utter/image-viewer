@@ -1,6 +1,6 @@
-use egui_wgpu::wgpu;
 use crate::image::cleanup::ShutdownNotif;
 use crate::image::metadata::Metadata;
+use egui_wgpu::wgpu;
 
 pub struct WebpTextureData {
     parser: image_webp::WebPDecoder<std::io::Cursor<Vec<u8>>>,
@@ -25,16 +25,26 @@ impl super::Texture for WebpTexture {
 pub async fn load_webp(handle: rfd::FileHandle) -> WebpTextureData {
     let bytes = handle.read().await;
     tokio::task::spawn_blocking(move || {
-        let parser = image_webp::WebPDecoder::new_with_options(std::io::Cursor::new(bytes), Default::default()).unwrap();
+        let parser = image_webp::WebPDecoder::new_with_options(
+            std::io::Cursor::new(bytes),
+            Default::default(),
+        )
+        .unwrap();
 
-        WebpTextureData {
-            parser,
-        }
-    }).await.unwrap()
+        WebpTextureData { parser }
+    })
+    .await
+    .unwrap()
 }
 
 impl WebpTextureData {
-    pub fn display(mut self, shutdown_tx: ShutdownNotif, device: &wgpu::Device, queue: std::sync::Arc<wgpu::Queue>, proxy: &egui_winit::winit::event_loop::EventLoopProxy<crate::app::UserEvent>) -> WebpTexture {
+    pub fn display(
+        mut self,
+        shutdown_tx: ShutdownNotif,
+        device: &wgpu::Device,
+        queue: std::sync::Arc<wgpu::Queue>,
+        proxy: &egui_winit::winit::event_loop::EventLoopProxy<crate::app::UserEvent>,
+    ) -> WebpTexture {
         let (width, height) = self.parser.dimensions();
         let size = wgpu::Extent3d {
             width: width as _,
@@ -111,9 +121,13 @@ impl WebpTextureData {
                             current_cumulative_pass_nr: 0,
                         };
 
-                        let _ = proxy.send_event(crate::app::UserEvent::RepaintRequest(repaint_info, None));
+                        let _ = proxy
+                            .send_event(crate::app::UserEvent::RepaintRequest(repaint_info, None));
 
-                        if shutdown_tx.sleep(Duration::from_millis(*duration as u64)).await {
+                        if shutdown_tx
+                            .sleep(Duration::from_millis(*duration as u64))
+                            .await
+                        {
                             return;
                         }
                         idx = (idx + 1) % max_idx;
@@ -130,7 +144,9 @@ impl WebpTextureData {
                     wgpu_write_webp_texture(&queue, &texture, width, height, &buf);
 
                     let elapsed = std::time::Instant::now().duration_since(now);
-                    let wait_time = std::time::Duration::from_millis(dur as u64).checked_sub(elapsed).unwrap_or(std::time::Duration::ZERO);
+                    let wait_time = std::time::Duration::from_millis(dur as u64)
+                        .checked_sub(elapsed)
+                        .unwrap_or(std::time::Duration::ZERO);
 
                     let repaint_info = egui::RequestRepaintInfo {
                         viewport_id: egui::ViewportId::ROOT,
@@ -138,7 +154,8 @@ impl WebpTextureData {
                         current_cumulative_pass_nr: 0,
                     };
 
-                    let _ = proxy.send_event(crate::app::UserEvent::RepaintRequest(repaint_info, None));
+                    let _ =
+                        proxy.send_event(crate::app::UserEvent::RepaintRequest(repaint_info, None));
 
                     cached.push((dur, buf));
 
@@ -170,15 +187,48 @@ impl WebpTextureData {
         WebpTexture {
             inner: texture,
             loaded,
-            metadata: Metadata {
-                width,
-                height,
-            }
+            metadata: Metadata { width, height },
         }
     }
 }
 
-pub fn wgpu_write_webp_texture(queue: &wgpu::Queue, texture: &wgpu::Texture, width: u32, height: u32, data: &[u8]) {
+pub fn wgpu_write_webp_texture(
+    queue: &wgpu::Queue,
+    texture: &wgpu::Texture,
+    width: u32,
+    height: u32,
+    data: &[u8],
+) {
+    /*
+    {
+        let clear = vec![0; (width * height * 4) as usize];
+
+        let clear_size = wgpu::Extent3d {
+            width: width as _,
+            height: height as _,
+            depth_or_array_layers: 1,
+        };
+
+        let clear_origin = wgpu::Origin3d::ZERO;
+
+        queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &texture,
+                mip_level: 0,
+                origin: clear_origin,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &clear,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(4 * (width as u32)),
+                rows_per_image: Some(height as _),
+            },
+            clear_size,
+        );
+    }
+    */
+
     let size = wgpu::Extent3d {
         width: width as _,
         height: height as _,
@@ -209,18 +259,33 @@ pub struct EguiWebpView {
 }
 
 impl EguiWebpView {
-    pub fn from_texture(texture: &WebpTexture, renderer: &mut egui_wgpu::Renderer, device: &wgpu::Device) -> Self {
+    pub fn from_texture(
+        texture: &WebpTexture,
+        renderer: &mut egui_wgpu::Renderer,
+        device: &wgpu::Device,
+    ) -> Self {
         let view = texture.inner.create_view(&Default::default());
-        let inner = renderer.register_native_texture_with_sampler_options(device, &view, wgpu::SamplerDescriptor { lod_min_clamp: 0., lod_max_clamp: 0., min_filter: wgpu::FilterMode::Linear, mag_filter: wgpu::FilterMode::Linear, ..Default::default()});
+        let inner = renderer.register_native_texture_with_sampler_options(
+            device,
+            &view,
+            wgpu::SamplerDescriptor {
+                lod_min_clamp: 0.,
+                lod_max_clamp: 0.,
+                min_filter: wgpu::FilterMode::Linear,
+                mag_filter: wgpu::FilterMode::Linear,
+                ..Default::default()
+            },
+        );
 
-        Self {
-            inner
-        }
+        Self { inner }
     }
 
     pub fn show(&mut self, ui: &mut egui::Ui, size: egui::Vec2) {
         let img = egui::Image::new((self.inner, size));
         ui.add(img);
     }
-}
 
+    pub fn free_textures(&mut self, renderer: &mut egui_wgpu::Renderer) {
+        renderer.free_texture(&self.inner)
+    }
+}

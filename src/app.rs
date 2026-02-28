@@ -1,21 +1,17 @@
 use egui_winit::winit;
 use winit::{
     event_loop::{EventLoop, EventLoopProxy},
-    window::{WindowId, WindowAttributes},
+    window::{WindowAttributes, WindowId},
 };
 
 pub enum ControlFlow {
     CreatePreview,
 }
 
-use egui_wgpu::wgpu;
 use egui::ViewportId;
+use egui_wgpu::wgpu;
 
-use std::{
-    iter,
-    sync::Arc,
-    collections::HashMap,
-};
+use std::{collections::HashMap, iter, sync::Arc};
 
 pub struct WgpuState {
     pub adapter: wgpu::Adapter,
@@ -25,20 +21,22 @@ pub struct WgpuState {
 }
 
 impl WgpuState {
-    fn create_window(&mut self, event_loop: &winit::event_loop::ActiveEventLoop, kind: WindowKind, fullscreen: Option<winit::window::Fullscreen>, proxy: &EventLoopProxy<UserEvent>) -> UiWindow {
+    fn create_window(
+        &mut self,
+        event_loop: &winit::event_loop::ActiveEventLoop,
+        kind: WindowKind,
+        fullscreen: Option<winit::window::Fullscreen>,
+        proxy: &EventLoopProxy<UserEvent>,
+    ) -> UiWindow {
         let (inner_size, min_inner_size) = match kind {
-            WindowKind::Main => {
-                (
-                    winit::dpi::LogicalSize::new(640f64, 400f64),
-                    winit::dpi::LogicalSize::new(1100f64, 720f64),
-                )
-            }
-            _ => {
-                (
-                    winit::dpi::LogicalSize::new(320f64, 200f64),
-                    winit::dpi::LogicalSize::new(320f64, 200f64),
-                )
-            }
+            WindowKind::Main => (
+                winit::dpi::LogicalSize::new(640f64, 400f64),
+                winit::dpi::LogicalSize::new(1100f64, 720f64),
+            ),
+            _ => (
+                winit::dpi::LogicalSize::new(320f64, 200f64),
+                winit::dpi::LogicalSize::new(320f64, 200f64),
+            ),
         };
 
         let builder = WindowAttributes::default()
@@ -95,7 +93,11 @@ impl WgpuState {
         let limits = wgpu::Limits::default();
         egui_winit.set_max_texture_side(limits.max_texture_dimension_2d as usize);
 
-        let egui_renderer = egui_wgpu::Renderer::new(&self.device, surface_format, egui_wgpu::RendererOptions::default());
+        let egui_renderer = egui_wgpu::Renderer::new(
+            &self.device,
+            surface_format,
+            egui_wgpu::RendererOptions::default(),
+        );
 
         {
             let repaint_proxy = proxy.clone();
@@ -111,7 +113,6 @@ impl WgpuState {
         egui_winit.egui_ctx().style_mut(|style| {
             style.spacing.slider_width = 200.0;
         });
-
 
         let window_state = match kind {
             WindowKind::Main => WindowState::Main(crate::viewer::Viewer::new()),
@@ -133,9 +134,18 @@ impl WgpuState {
     }
 }
 
-type FileData = (String, crate::image::ImageTexture, crate::image::ImageView, crate::image::cleanup::Cleanup);
+type FileData = (
+    String,
+    crate::image::ImageTexture,
+    crate::image::ImageView,
+    crate::image::cleanup::Cleanup,
+);
 
-type FileDataChannel = (String, crate::image::ImageTexture, crate::image::cleanup::Cleanup);
+type FileDataChannel = (
+    String,
+    crate::image::ImageTexture,
+    crate::image::cleanup::Cleanup,
+);
 
 pub struct GlobalState<'a> {
     pub rt: &'a tokio::runtime::Runtime,
@@ -144,7 +154,7 @@ pub struct GlobalState<'a> {
     pub file_rx: std::sync::mpsc::Receiver<FileDataChannel>,
 }
 
-impl <'a> GlobalState<'a> {
+impl<'a> GlobalState<'a> {
     pub fn new(rt: &'a tokio::runtime::Runtime) -> Self {
         let (file_tx, file_rx) = std::sync::mpsc::channel();
         Self {
@@ -156,7 +166,6 @@ impl <'a> GlobalState<'a> {
     }
 }
 
-
 pub struct WindowHandler<'a> {
     pub wgpu: WgpuState,
     pub proxy: EventLoopProxy<UserEvent>,
@@ -164,7 +173,7 @@ pub struct WindowHandler<'a> {
     pub global_state: GlobalState<'a>,
 }
 
-impl <'a> WindowHandler<'a> {
+impl<'a> WindowHandler<'a> {
     pub async fn new(global_state: GlobalState<'a>) -> (EventLoop<UserEvent>, Self) {
         let event_loop: EventLoop<UserEvent> = EventLoop::with_user_event().build().unwrap();
         let proxy = event_loop.create_proxy();
@@ -195,16 +204,14 @@ impl <'a> WindowHandler<'a> {
 
         let limits = wgpu::Limits::default();
         let (device, queue) = adapter
-            .request_device(
-                &wgpu::DeviceDescriptor {
-                    label: None,
-                    required_features: wgpu::Features::default(),
-                    required_limits: limits.clone(),
-                    memory_hints: wgpu::MemoryHints::default(),
-                    trace: wgpu::Trace::Off,
-                    experimental_features: wgpu::ExperimentalFeatures::disabled(),
-                },
-            )
+            .request_device(&wgpu::DeviceDescriptor {
+                label: None,
+                required_features: wgpu::Features::default(),
+                required_limits: limits.clone(),
+                memory_hints: wgpu::MemoryHints::default(),
+                trace: wgpu::Trace::Off,
+                experimental_features: wgpu::ExperimentalFeatures::disabled(),
+            })
             .await
             .unwrap();
 
@@ -222,18 +229,23 @@ impl <'a> WindowHandler<'a> {
         })
         .unwrap();
 
-        (event_loop, Self {
-            proxy,
-            wgpu,
-            windows: HashMap::new(),
-            global_state,
-        })
+        (
+            event_loop,
+            Self {
+                proxy,
+                wgpu,
+                windows: HashMap::new(),
+                global_state,
+            },
+        )
     }
 
     fn ui_ctrl_flow(&mut self, ctrl: ControlFlow, event_loop: &winit::event_loop::ActiveEventLoop) {
         match ctrl {
             ControlFlow::CreatePreview => {
-                let window = self.wgpu.create_window(event_loop, WindowKind::Preview, None, &self.proxy);
+                let window =
+                    self.wgpu
+                        .create_window(event_loop, WindowKind::Preview, None, &self.proxy);
                 let id = window.id();
                 window.window.set_visible(true);
                 self.windows.insert(id, window);
@@ -249,13 +261,19 @@ pub enum UserEvent {
     Ui(ControlFlow),
 }
 
-impl <'a> winit::application::ApplicationHandler<UserEvent> for WindowHandler<'a> {
-    fn new_events(&mut self, event_loop: &winit::event_loop::ActiveEventLoop, cause: winit::event::StartCause) {
+impl<'a> winit::application::ApplicationHandler<UserEvent> for WindowHandler<'a> {
+    fn new_events(
+        &mut self,
+        event_loop: &winit::event_loop::ActiveEventLoop,
+        cause: winit::event::StartCause,
+    ) {
         use winit::event::StartCause;
 
         match cause {
             StartCause::Init => {
-                let window = self.wgpu.create_window(event_loop, WindowKind::Main, None, &self.proxy);
+                let window =
+                    self.wgpu
+                        .create_window(event_loop, WindowKind::Main, None, &self.proxy);
                 let id = window.id();
                 self.windows.insert(id, window);
             }
@@ -269,7 +287,12 @@ impl <'a> winit::application::ApplicationHandler<UserEvent> for WindowHandler<'a
         }
     }
 
-    fn window_event(&mut self, event_loop: &winit::event_loop::ActiveEventLoop, id: winit::window::WindowId, event: winit::event::WindowEvent) {
+    fn window_event(
+        &mut self,
+        event_loop: &winit::event_loop::ActiveEventLoop,
+        id: winit::window::WindowId,
+        event: winit::event::WindowEvent,
+    ) {
         use winit::event::WindowEvent;
 
         let Some(window) = self.windows.get_mut(&id) else {
@@ -292,7 +315,9 @@ impl <'a> winit::application::ApplicationHandler<UserEvent> for WindowHandler<'a
                 if size.width > 0 && size.height > 0 {
                     window.surface_config.width = size.width;
                     window.surface_config.height = size.height;
-                    window.surface.configure(&self.wgpu.device, &window.surface_config);
+                    window
+                        .surface
+                        .configure(&self.wgpu.device, &window.surface_config);
                     //app.resize(size);
                 }
             }
@@ -301,12 +326,19 @@ impl <'a> winit::application::ApplicationHandler<UserEvent> for WindowHandler<'a
                 {
                     let raw_input = window.egui_state.take_egui_input(&window.window);
                     let egui_output = window.egui_state.egui_ctx().run(raw_input, |ctx| {
-                        if let Some(ctrl_flow) = window.window_state.update(ctx, &mut self.global_state, &self.wgpu, &mut window.renderer, &self.proxy) {
+                        if let Some(ctrl_flow) = window.window_state.update(
+                            ctx,
+                            &mut self.global_state,
+                            &self.wgpu,
+                            &mut window.renderer,
+                            &self.proxy,
+                        ) {
                             let _ = self.proxy.send_event(UserEvent::Ui(ctrl_flow));
                         }
                     });
 
-                    window.egui_state
+                    window
+                        .egui_state
                         .handle_platform_output(&window.window, egui_output.platform_output);
                     for (id, image_delta) in egui_output.textures_delta.set {
                         window.renderer.update_texture(
@@ -322,7 +354,8 @@ impl <'a> winit::application::ApplicationHandler<UserEvent> for WindowHandler<'a
                     }
 
                     let pixels_per_point = window.egui_state.egui_ctx().pixels_per_point();
-                    window.shapes = window.egui_state
+                    window.shapes = window
+                        .egui_state
                         .egui_ctx()
                         .tessellate(egui_output.shapes, pixels_per_point);
                 }
@@ -332,7 +365,8 @@ impl <'a> winit::application::ApplicationHandler<UserEvent> for WindowHandler<'a
                     .texture
                     .create_view(&wgpu::TextureViewDescriptor::default());
                 let mut encoder =
-                    self.wgpu.device
+                    self.wgpu
+                        .device
                         .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                             label: Some("Render Encoder"),
                         });
@@ -341,7 +375,10 @@ impl <'a> winit::application::ApplicationHandler<UserEvent> for WindowHandler<'a
                     {
                         let screen_descriptor = egui_wgpu::ScreenDescriptor {
                             pixels_per_point: window.window.scale_factor() as f32,
-                            size_in_pixels: [window.surface_config.width, window.surface_config.height],
+                            size_in_pixels: [
+                                window.surface_config.width,
+                                window.surface_config.height,
+                            ],
                         };
 
                         let cmd_buffers = window.renderer.update_buffers(
@@ -371,7 +408,9 @@ impl <'a> winit::application::ApplicationHandler<UserEvent> for WindowHandler<'a
                             })
                             .forget_lifetime();
 
-                        window.renderer.render(&mut pass, &window.shapes, &screen_descriptor);
+                        window
+                            .renderer
+                            .render(&mut pass, &window.shapes, &screen_descriptor);
                     }
 
                     self.wgpu.queue.submit(iter::once(encoder.finish()));
@@ -379,7 +418,8 @@ impl <'a> winit::application::ApplicationHandler<UserEvent> for WindowHandler<'a
                     output.present();
                 }
 
-                let control_flow = winit::event_loop::ControlFlow::wait_duration(window.repaint_delay);
+                let control_flow =
+                    winit::event_loop::ControlFlow::wait_duration(window.repaint_delay);
                 event_loop.set_control_flow(control_flow);
             }
             ev => {
@@ -427,9 +467,7 @@ impl <'a> winit::application::ApplicationHandler<UserEvent> for WindowHandler<'a
                     }
                 }
             }
-            UserEvent::Ui(ctrl) => {
-                self.ui_ctrl_flow(ctrl, event_loop)
-            }
+            UserEvent::Ui(ctrl) => self.ui_ctrl_flow(ctrl, event_loop),
         }
     }
 }
@@ -468,7 +506,14 @@ pub struct WgpuRef<'a> {
 }
 
 impl WindowState {
-    fn update(&mut self, ctx: &egui::Context, global_state: &mut GlobalState<'_>, wgpu: &WgpuState, renderer: &mut egui_wgpu::Renderer, proxy: &EventLoopProxy<UserEvent>) -> Option<ControlFlow> {
+    fn update(
+        &mut self,
+        ctx: &egui::Context,
+        global_state: &mut GlobalState<'_>,
+        wgpu: &WgpuState,
+        renderer: &mut egui_wgpu::Renderer,
+        proxy: &EventLoopProxy<UserEvent>,
+    ) -> Option<ControlFlow> {
         let wgpu_ref = WgpuRef {
             device: wgpu.device.clone(),
             queue: wgpu.queue.clone(),
@@ -476,14 +521,11 @@ impl WindowState {
         };
 
         match self {
-            Self::Main(app) => {
-                app.display(ctx, global_state, wgpu_ref, proxy)
-            }
-            /*
-            Self::Preview(p) => {
-                p.display(ctx, global_state, wgpu_ref)
-            }
-            */
+            Self::Main(app) => app.display(ctx, global_state, wgpu_ref, proxy), /*
+                                                                                Self::Preview(p) => {
+                                                                                    p.display(ctx, global_state, wgpu_ref)
+                                                                                }
+                                                                                */
         }
         //None
     }
@@ -493,4 +535,3 @@ enum WindowKind {
     Main,
     Preview,
 }
-

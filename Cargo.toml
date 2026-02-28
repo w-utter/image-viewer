@@ -20,18 +20,12 @@ rfd = "0.15"
 lockfree = "0.5"
 
 #zenavif-parse = {git = "https://github.com/imazen/zenavif-parse", features = ["eager"]}
-zenavif-parse = {path = "../zenavif-parse", features = ["eager"]}
-#rav1d-safe = {git = "https://github.com/imazen/rav1d-safe"}
+zenavif-parse = {path = "../zenavif-parse"}
 dav1d = "0.11"
-aom-decode = "0.2"
-
 
 num-traits = "0.2"
 
-image = {version = "0.25", features = ["avif-native"]}
-
-yuvutils-rs = "0.8"
-
-image-webp = "0.2"
+image-webp = {path = "../image-webp"}
+#image-webp = {git = "https://github.com/image-rs/image-webp"}
 
 gif = "0.14"
