@@ -1,5 +1,5 @@
 [package]
-name = "avif-viewer"
+name = "image-viewer"
 version = "0.1.0"
 edition = "2024"
 
@@ -19,13 +19,12 @@ rfd = "0.15"
 
 lockfree = "0.5"
 
-#zenavif-parse = {git = "https://github.com/imazen/zenavif-parse", features = ["eager"]}
-zenavif-parse = {path = "../zenavif-parse"}
+zenavif-parse = {git = "https://github.com/w-utter/zenavif-parse"}
+
 dav1d = "0.11"
 
 num-traits = "0.2"
 
-image-webp = {path = "../image-webp"}
-#image-webp = {git = "https://github.com/image-rs/image-webp"}
+image-webp = {git = "https://github.com/image-rs/image-webp"}
 
 gif = "0.14"
