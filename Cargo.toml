@@ -19,7 +19,7 @@ rfd = "0.15"
 
 lockfree = "0.5"
 
-zenavif-parse = {git = "https://github.com/w-utter/zenavif-parse"}
+zenavif-parse = {git = "https://github.com/w-utter/zenavif-parse", branch = "pict-alpha-track"}
 
 dav1d = "0.11"
 
